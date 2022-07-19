@@ -1,0 +1,2 @@
+# nonebot-plugin-R6TrackerApi
+一个用于连接上r6 tracker并提供群内便捷查询r6战绩的nonebot插件
