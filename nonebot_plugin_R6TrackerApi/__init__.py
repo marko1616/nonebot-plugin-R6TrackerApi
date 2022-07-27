@@ -1,3 +1,4 @@
+from email import message
 import os
 
 from nonebot import get_driver
@@ -9,6 +10,7 @@ from nonebot.adapters.onebot.v11 import Message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from .config import Config
+from .get import get_r6_stats
 
 import requests, lxml, bs4
 
@@ -19,22 +21,14 @@ except ModuleNotFoundError:
 
 ubi_name_cache_file = os.path.join("data", "ubi_name_cache_file.json")
 
+self_strs = ["我","自己","私","wo","me","self","watashi"]#表示自己的词
+
 def write_cache_to_json(data):
     with open(ubi_name_cache_file, "w", encoding="utf-8") as file:
         file.write(json.dumps(data))
 
 global_config = get_driver().config
 config = Config.parse_obj(global_config)
-
-headers = {
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:91.0) Gecko/20100101 Firefox/91.0',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-}
-
-params = {
-    'name': '',
-    'platform': ''
-}
 
 if not os.path.exists("data"):
     os.makedirs("data")
@@ -49,13 +43,14 @@ search_r6_data = on_command("r6战绩查询",priority=5)
 @search_r6_data.handle()
 async def search_r6_data_handle(matcher: Matcher, bot: Bot, event: Event, args : Message = CommandArg()):
     #初始化每一次的事件处理用标识变量
-    Config.at_flag = False
-    Config.use_cache_flag = False
+    Config.at_flag = False#是否强制使用缓存@或表示自己
+    Config.use_cache_flag = False#缓存存在标识
 
     plain_text = args.extract_plain_text()
     if "[CQ:at,qq=" in event.raw_message:
         matcher.set_arg("ubi_name", Message(event.raw_message.split("=")[1].split("]")[0]))#获取@里面的QQ号当参数
         Config.at_flag = True
+
     if plain_text:
         matcher.set_arg("ubi_name", args)
 
@@ -63,6 +58,8 @@ async def search_r6_data_handle(matcher: Matcher, bot: Bot, event: Event, args :
 async def get_data(bot: Bot, event: Event,ubi_name: str = ArgPlainText("ubi_name")):
     if "[CQ:at,qq=" in event.raw_message:
         ubi_name =  event.raw_message.split("=")[1].split("]")[0]
+        Config.at_flag = True
+    if ubi_name in self_strs:
         Config.at_flag = True
     #校验是否是群名称
     if type(event) == GroupMessageEvent:
@@ -73,55 +70,25 @@ async def get_data(bot: Bot, event: Event,ubi_name: str = ArgPlainText("ubi_name
         if group_id in ubi_name_cache["groups"]:
             for member in member_list:
                 if str(member['user_id']) in ubi_name_cache["groups"][group_id]:
-                    if str(member['user_id']) == ubi_name or member['card'] == ubi_name or member['nickname'] == ubi_name:
+                    if str(member['user_id']) == ubi_name or member['card'] == ubi_name or member['nickname'] == ubi_name or ubi_name in self_strs:
                         ubi_name = ubi_name_cache["groups"][group_id][str(member['user_id'])]["ubi_name"]
-                        await search_r6_data.send(f"检测到是群名称自动使用已缓存的UBI名称{ubi_name}")
+                        await search_r6_data.send(f"检测到是群名/自我查询自动使用已缓存的UBI名称{ubi_name}")
                         Config.use_cache_flag = True
-
         else:
             ubi_name_cache["groups"][group_id] = {}
             write_cache_to_json(ubi_name_cache)
     
+    elif Config.at_flag:#如果是好友且查询自己
+        friend_id = str(event.get_user_id())
+        if friend_id in ubi_name_cache["friends"]:
+            ubi_name = ubi_name_cache["friends"][friend_id]
+    
     if not Config.use_cache_flag and Config.at_flag:#如果在@的情况下没找到缓存
         #search_r6_data.send("检测到你在使用@，但缓存并没有对应的UBI用户名。请输入UBI用户名:")
-        await search_r6_data.finish("检测到你在使用@，但缓存并没有对应的UBI用户名。请提醒他使用(/设置育碧名称)设置自己的UBI名称")
+        await search_r6_data.finish("检测到你在使用@或者查询自己，但缓存并没有对应的UBI用户名。请提醒他使用(/设置育碧名称)设置自己的UBI名称")
 
-    #查询模块
-    params['name'] = ubi_name
-    url = 'https://r6.tracker.network/r6/search'
-    await search_r6_data.send("开始请求r6 tracker network")
-    try:
-        res = requests.get(url=url,params=params,headers=headers)
-    except:
-        await search_r6_data.finish("啊实在上不去r6 tracker network了呢")
-    #如果用户存在
-    if res.status_code == 200:
-        #HTML解码
-        decoded = bs4.BeautifulSoup(res.text,'lxml')
-        message = f"{ubi_name}的多人模式数据:\n"
-        PVPKDRatio = str(decoded.select("div[data-stat = 'PVPKDRatio']")[0].string).strip('\n').strip(' ').replace(',','')
-        PVPDeaths = str(decoded.select("div[data-stat = 'PVPDeaths']")[0].string).strip('\n').strip(' ').replace(',','')
-        PVPMatchesWon = str(decoded.select("div[data-stat = 'PVPMatchesWon']")[0].string).strip('\n').strip(' ').replace(',','')
-        PVPMatchesLost = str(decoded.select("div[data-stat = 'PVPMatchesLost']")[0].string).strip('\n').strip(' ').replace(',','')
-        PVPWLRatio = str(decoded.select("div[data-stat = 'PVPWLRatio']")[0].string).strip('\n').strip(' ').replace(',','')
-        PVPTimePlayed = str(decoded.select("div[data-stat = 'PVPTimePlayed']")[0].string).strip('\n').strip(' ').replace(',','')
-        PVPMatchesPlayed = str(decoded.select('div[data-stat = \"PVPMatchesPlayed\"]')[0].string).strip('\n').strip(' ').replace(',','')
-        PVPAccuracy = str(decoded.select("div[data-stat = 'PVPAccuracy']")[0].string).strip("\n").replace(",","")
-        PVPHeadshots = str(decoded.select("div[data-stat = 'PVPHeadshots']")[0].string).strip("\n").replace(",","")
-        PVPTotalXp = str(decoded.select("div[data-stat = 'PVPTotalXp']")[0].string).strip("\n").replace(",","")
-        message += f"KD: {PVPKDRatio}\n"
-        message += f"总死亡次数: {PVPDeaths}\n"
-        message += f"总获胜次数: {PVPMatchesWon}\n"
-        message += f"总失败次数: {PVPMatchesLost}\n"
-        message += f"胜利占比: {PVPWLRatio}\n"
-        message += f"总游玩时间: {PVPTimePlayed}\n"
-        message += f"总局数: {PVPMatchesPlayed}\n"
-        message += f"爆头率: {PVPAccuracy}\n"
-        message += f"总爆头次数: {PVPHeadshots}\n"
-        message += f"总经验: {PVPTotalXp}\n"
-    else:
-        message = f"没有找到对{ubi_name}查询结果呢~"
-
+    search_r6_data.send("开始请求r6 tracker network")
+    message = get_r6_stats(ubi_name)
     await search_r6_data.send(message)
 
 set_ubi_name = on_command("设置育碧名称",priority=5)
