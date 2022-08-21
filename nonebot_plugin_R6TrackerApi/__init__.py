@@ -48,7 +48,7 @@ async def do_the_statistics():
             #get_r6_stats(ubi_name_cache["groups"][group][member]["ubi_name"])
             pass
 
-search_r6_data = on_command("r6战绩查询",priority=5)
+search_r6_data = on_command("r6战绩查询",aliases={"r6d"},priority=5)
 @search_r6_data.handle()
 async def search_r6_data_handle(matcher: Matcher, bot: Bot, event: Event, args : Message = CommandArg()):
     #初始化每一次的事件处理用标识变量
@@ -100,21 +100,28 @@ async def get_data(bot: Bot, event: Event,ubi_name: str = ArgPlainText("ubi_name
     await search_r6_data.send("开始请求r6 tracker network")
     message = await get_r6_stats(ubi_name)
     if message != "404":
-        await search_r6_data.send(message)
+        if len(message) >= 50 and message != list:#如果非网络错误
+            await search_r6_data.send(Message(message))
+            await search_r6_data.send(Message(f'[CQ:image,file=file:///{os.path.join(os.path.dirname(__file__),"gen.png")}]'))
+        elif message == list:
+            await search_r6_data.send(Message(message[0]))
+            await search_r6_data.send(Message(message[1]))
+        else:
+            await search_r6_data.send(Message(message))
     else:#404处理
         if Config.use_cache_flag:
             await search_r6_data.send(f"うえ？对{ubi_name}的缓存查询的结果404了!快检查是不是育碧名称设置错了")
         else:
             await search_r6_data.send(f"没有对{ubi_name}的查询结果捏~")
 
-set_ubi_name = on_command("设置育碧名称",priority=5)
+set_ubi_name = on_command("设置育碧名称",aliases={"stubi"},priority=5)
 @set_ubi_name.handle()
 async def set_ubi_name_handle(matcher: Matcher, bot: Bot, event: Event, args : Message = CommandArg()):
     plain_text = args.extract_plain_text()
     if plain_text:
         matcher.set_arg("ubi_name", args)
 
-@set_ubi_name.got("ubi_name", prompt='育碧名称是?')
+@set_ubi_name.got("ubi_name",prompt='育碧名称是?')
 async def get_and_set_ubi_name(bot: Bot, event: Event,ubi_name: str = ArgPlainText("ubi_name")):
     if type(event) == GroupMessageEvent:
         user_id = str(event.user_id)
