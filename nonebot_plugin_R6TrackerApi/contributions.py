@@ -1,3 +1,4 @@
+import time
 try:
     import ujson as json
 except ModuleNotFoundError:
@@ -5,20 +6,44 @@ except ModuleNotFoundError:
 
 #贡献类
 class contributions:
-    def __init__(self,file_obj):
-        self.file_obj = file_obj
-        try:
-            self.data = json.loads(self.file_obj.read())
-        except:
-            self.data = {"groups": {}}
-            self.write_data()
+    def __init__(self,file_path):
+        self.file_path = file_path
+        with open(self.file_path,"r") as file_obj:
+            try:
+                self.data = json.loads(file_obj.read())
+            except:
+                self.data = {"basic":{},"days":{}}
+                self.write_data()
 
-    def update_data(self,time_when_update,data,ubi_name,group_id = 0,member_id = 0):
-        if not group_id in self.data["groups"]:
-            self.data["groups"]["group_id"] = {}
-        if not member_id in self.data["groups"][group_id]:
-            self.data["groups"]["group_id"][member_id] = []           
-            self.data["groups"]["group_id"][member_id].append(time_when_update,ubi_name,data)
+    def update_data(self,time_when_update,data,ubi_name):
+        if str(time_when_update) not in self.data["basic"]:
+            self.data["basic"][str(time_when_update)] = []
+        self.data["basic"][str(time_when_update)].append((ubi_name,data))
+        self.write_data()
+
+    def read_data(self):
+        return self.data
 
     def write_data(self):
-        self.file_obj.write(json.dumps(self.data))
+        with open(self.file_path,"w+") as file_obj:
+            file_obj.write(json.dumps(self.data))
+    
+    def get_data_today(self):
+        sorted_key = sorted(self.data["basic"],reverse=True)
+        time_newest = float(sorted_key[0])
+        newest_data = self.data["basic"][sorted_key[0]]
+        today_num_data = []
+        for tmp_time in sorted_key:
+            today_first_data = self.data["basic"][tmp_time]
+            if time.strftime("%d",time.localtime(float(tmp_time))) != time.strftime("%d",time.localtime(time_newest)):
+                break
+        ubi_name_have = [data[0] for data in today_first_data]
+        for ubi_name,num in newest_data:
+            if ubi_name in ubi_name_have:
+                today_num = num - today_first_data[ubi_name_have.index(ubi_name)][1]
+                today_num_data.append((ubi_name,today_num))
+        return today_num_data
+    
+    def write_today_data(self):
+        self.data["days"][time.asctime(time.localtime())] = self.get_data_today()
+        self.write_data()
