@@ -1,8 +1,9 @@
 from io import BytesIO
 import os
 import bs4, lxml
-import requests
+import httpx
 from PIL import Image, ImageFont, ImageDraw
+from PIL.PngImagePlugin import PngImageFile, PngInfo
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:91.0) Gecko/20100101 Firefox/91.0',
@@ -19,27 +20,31 @@ proxies = {
   'https': 'http://localhost:15236',
 }
 
+async def get(url):
+    try:
+        async with httpx.AsyncClient(headers=headers,params=params) as client:
+            response = await client.get(url, timeout=30)
+    except:
+        try:
+            async with httpx.AsyncClient(headers=headers,params=params,proxies='http://127.0.0.1:15236') as client:
+                response = await client.get(url, timeout=30)
+        except:
+            return False
+    return response
+
 async def get_r6_stats(ubi_name):
     #查询模块
     params['name'] = ubi_name
     url = 'https://r6.tracker.network/r6/search'
-    try:
-        res = requests.get(url=url,params=params,headers=headers)
-    except:
-        try:
-            res = requests.get(url=url,params=params,headers=headers,proxies=proxies)
-        except:
-            return "啊实在上不去r6 tracker network了呢"
+    res = await get(url)
+    if not res:
+        return "无法访问r6 tracker network呢"
     #如果用户存在
-    if res.status_code == 200:
+    if res.status_code in [200,302]:
         url = 'https://r6.tracker.network/profile/pc/' + ubi_name
-        try:
-            res = requests.get(url=url,params=params,headers=headers)
-        except:
-            try:
-                res = requests.get(url=url,params=params,headers=headers,proxies=proxies)
-            except:
-                return "啊实在上不去r6 tracker network了呢"
+        res = await get(url)
+        if not res:
+            return f"无法访问{url}呢"
         #HTML解码
         decoded = bs4.BeautifulSoup(res.text,'lxml')
         message = f"{ubi_name}的概览数据:\n"
@@ -96,29 +101,21 @@ async def get_r6_stats(ubi_name):
         message += f"赛季排位MMR: {season_ranked_MMR}\n"
         message += f"赛季不含排位MMR: {season_unrank_MMR}\n"
     else:
-        message = "404"
+        message = str(res.status_code)
     #绘图
     try:
         font170 = ImageFont.truetype(os.path.join(os.path.dirname(__file__),"ScoutCond-Italic.ttf"),170)
         font100 = ImageFont.truetype(os.path.join(os.path.dirname(__file__),"ScoutCond-Italic.ttf"),100)
         font50 = ImageFont.truetype(os.path.join(os.path.dirname(__file__),"ScoutCond-Italic.ttf"),50)
         url = avatar_url
-        try:
-            res = requests.get(url=url,params=params,headers=headers)
-        except:
-            try:
-                res = requests.get(url=url,params=params,headers=headers,proxies=proxies)
-            except:
-                return "无法访问育碧头像url呢(网络错误)"
+        res = await get(url)
+        if not res:
+            return "无法访问育碧头像url呢(网络错误)"
         avatar = Image.open(BytesIO(res.content)).convert("RGBA")
         url = rank_icon_url
-        try:
-            res = requests.get(url=url,params=params,headers=headers)
-        except:
-            try:
-                res = requests.get(url=url,params=params,headers=headers,proxies=proxies)
-            except:
-                return "实在上不去r6 tracker network了呢"
+        res = await get(url)
+        if not res:
+            return f"无法访问{url}呢"
         rank_icon = Image.open(BytesIO(res.content))
         bg = Image.open(os.path.join(os.path.dirname(__file__),"bg.png")).convert("RGBA")
         avatar = avatar.resize((256,256))
@@ -126,6 +123,10 @@ async def get_r6_stats(ubi_name):
         draw = ImageDraw.Draw(bg)
         #general
         draw.text((400,200),"GENERAL:",fill=(250,250,250),font=font170)
+        offset = round(font170.getsize("GENERAL:")[0]/2)-round(font100.getsize(ubi_name)[0]/2)
+        if 400+offset <= 360:#offset out of box
+            offset += 360-(400+offset)
+        draw.text((400+offset,120),ubi_name,fill=(250,250,250),font=font100)
         draw.line((150,415,625,415),fill=(250,250,250),width=5)
         draw.text((100,450),f"Level:{PVPLevel}",fill=(250,250,250),font=font100)
         draw.text((400,450),f"K/D:{PVPKDRatio}",fill=(250,250,250),font=font100)
@@ -149,6 +150,33 @@ async def get_r6_stats(ubi_name):
         draw.text((1124,1050),f"KILLS/MATCH:{rank_kills_per_match}",fill=(250,250,250),font=font100)
         #bg.show()
         bg.save(os.path.join(os.path.dirname(__file__),"gen.png"))
+        #add meta data
+        image = PngImageFile(os.path.join(os.path.dirname(__file__),"gen.png"))
+        metadata = PngInfo()
+        metadata.add_text("made by", "marko_bot by marko1616")
+        image.save(os.path.join(os.path.dirname(__file__),"gen.png"),pnginfo=metadata)
+
         return message
     except:
-        return [message,"绘图错误捏(可尝试重试)"]
+        if len(message) <= 5:
+            return [f"状态码:{message}","(网络错误)"]
+        else:
+            return [message,"绘图错误捏(可尝试重试)"]
+
+async def get_matches_played(ubi_name):
+    params['name'] = ubi_name
+    url = 'https://r6.tracker.network/r6/search'
+    res = await get(url)
+    if not res:
+        return False
+    #如果用户存在
+    if res.status_code in [200,302]:
+        url = 'https://r6.tracker.network/profile/pc/' + ubi_name
+        res = await get(url)
+        if not res:
+            return False
+        decoded = bs4.BeautifulSoup(res.text,'lxml')
+        PVPMatchesPlayed = str(decoded.select('div[data-stat = \"PVPMatchesPlayed\"]')[0].string).strip('\n').strip(' ').replace(',','')
+        return int(''.join(PVPMatchesPlayed.split(",")))
+    else:
+        return False
