@@ -8,7 +8,7 @@ from nonebot.params import CommandArg, ArgPlainText
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import Message
-from adapters_to_std import get_msg, is_group_msg, get_group_member_list, is_what_adapter
+from adapters_to_std import *
 
 from nonebot_plugin_apscheduler import scheduler
 
@@ -81,7 +81,7 @@ async def get_data(bot: Bot, event: Event,ubi_name: str = ArgPlainText("ubi_name
         if group_id in ubi_name_cache[adapter_type]["groups"]:
             for member in member_list:
                 if str(member['user_id']) in ubi_name_cache[adapter_type]["groups"][group_id]:
-                    if str(member['user_id']) == ubi_name or member['card'] == ubi_name or member['nickname'] == ubi_name or (ubi_name in self_strs and str(member["user_id"]) == event.get_user_id()):
+                    if str(member['user_id']) == ubi_name or member['nickname'] == ubi_name or (ubi_name in self_strs and str(member["user_id"]) == event.get_user_id()):
                         ubi_name = ubi_name_cache[adapter_type]["groups"][group_id][str(member['user_id'])]["ubi_name"]
                         await search_r6_data.send(f"检测到是群名/自我查询自动使用已缓存的UBI名称{ubi_name}")
                         use_cache_flag = True
@@ -103,13 +103,17 @@ async def get_data(bot: Bot, event: Event,ubi_name: str = ArgPlainText("ubi_name
     message = await get_r6_stats(ubi_name)
     if message != "404":
         if len(message) >= 50 and message != list:#如果非网络错误
-            await search_r6_data.send(Message(message))
-            await search_r6_data.send(Message(f'[CQ:image,file=file:///{os.path.join(os.path.dirname(__file__),"gen.png")}]'))
+            await search_r6_data.send(message)
+            if adapter_type == "kook":
+                url = await send_media(bot,"image",f'{os.path.join(os.path.dirname(__file__),"gen.png")}')
+                await search_r6_data.send(append_MessageSegment(adapter_type,'image',url))
+            else:
+                await search_r6_data.send(append_MessageSegment(adapter_type,'image',f'file:///{os.path.join(os.path.dirname(__file__),"gen.png")}'))
         elif message == list:
-            await search_r6_data.send(Message(message[0]))
-            await search_r6_data.send(Message(message[1]))
+            await search_r6_data.send(message[0])
+            await search_r6_data.send(message[1])
         else:
-            await search_r6_data.send(Message(message))
+            await search_r6_data.send(message)
     else:#404处理
         if use_cache_flag:
             await search_r6_data.send(f"うえ？对{ubi_name}的缓存查询的结果404了!快检查是不是育碧名称设置错了")
@@ -146,9 +150,9 @@ async def get_and_set_ubi_name(bot: Bot, event: Event,ubi_name: str = ArgPlainTe
 
 get_today_r6data = on_command("今日群r6数据",aliases={"tr6d"},priority=5)
 @get_today_r6data.handle()
-async def _():
+async def _(event: Event,bot: Bot):
+    adapter_type = is_what_adapter(event)
     res = contribution_manager.get_data_today()
-    await get_today_r6data.send(str(res))
     res.sort(key=lambda x:x[1],reverse=True)
     img = Image.new('RGBA',(2048,2048),(25,25,25))
     draw = ImageDraw.Draw(img)
@@ -163,7 +167,11 @@ async def _():
         draw.rectangle(((500, pixel_y),(500+int(data[1])*50, pixel_y+50)), fill=(255-fill_green,255,255-fill_green), width=5)
         pixel_y += 75
     img.save(os.path.join(os.path.dirname(__file__),"gen.png"))
-    await search_r6_data.send(Message(f'[CQ:image,file=file:///{os.path.join(os.path.dirname(__file__),"gen.png")}]'))
+    if adapter_type == "kook":
+        url = await send_media(bot,"image",f'{os.path.join(os.path.dirname(__file__),"gen.png")}')
+        await search_r6_data.send(append_MessageSegment(adapter_type,'image',url))
+    else:
+        await search_r6_data.send(append_MessageSegment(adapter_type,'image',f'file:///{os.path.join(os.path.dirname(__file__),"gen.png")}'))
 
 #肝量数据统计
 manual_update = on_command("手动更新r6数据",aliases={"r6u"},permission=SUPERUSER)
@@ -171,8 +179,8 @@ manual_update = on_command("手动更新r6数据",aliases={"r6u"},permission=SUP
 @scheduler.scheduled_job("cron", day="*", hour="23", minute="40")#减少过天误差
 @scheduler.scheduled_job("cron", hour="*/2",minute="30")
 async def contribute():
+    ubi_name_list = []
     for adapter_type in ["onebot_v11","kook"]:
-        ubi_name_list = []
         for group in ubi_name_cache[adapter_type]["groups"]:
             for user in ubi_name_cache[adapter_type]["groups"][group]:
                 ubi_name = ubi_name_cache[adapter_type]["groups"][group][user]["ubi_name"]
