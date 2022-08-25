@@ -16,19 +16,19 @@ params = {
 }
 
 proxies = {
-  'http': 'http://localhost:15236',
-  'https': 'http://localhost:15236',
+  'http://': 'http://localhost:15236',
+  'https://': 'http://localhost:15236',
 }
 
 async def get(url):
     try:
-        async with httpx.AsyncClient(headers=headers,params=params) as client:
+        async with httpx.AsyncClient(headers=headers,params=params,proxies=proxies) as client:
             response = await client.get(url, timeout=30)
-    except:
+    except BaseException as e:
         try:
-            async with httpx.AsyncClient(headers=headers,params=params,proxies='http://127.0.0.1:15236') as client:
+            async with httpx.AsyncClient(headers=headers,params=params) as client:
                 response = await client.get(url, timeout=30)
-        except:
+        except BaseException as e:
             return False
     return response
 
