@@ -44,6 +44,18 @@ class contributions:
                 today_num_data.append((ubi_name,today_num))
         return today_num_data
     
+    def get_ones_year_data(self,ubi_name):
+        res = [0]*365
+        year = time.strftime('%Y',time.localtime())
+        for data in self.data["days"]:
+            data_time = time.mktime(time.strptime(data,"%a %b %d %H:%M:%S %Y"))
+            if time.strftime('%Y',time.localtime(data_time)) == year:
+                for user in self.data["days"][data]:
+                    if user[0] == ubi_name:
+                        res[int(time.strftime('%j',time.localtime(data_time)))-1] = user[1]
+        return res
+    
     def write_today_data(self):
         self.data["days"][time.asctime(time.localtime())] = self.get_data_today()
+        self.data["basic"] = {}
         self.write_data()
