@@ -1,6 +1,6 @@
 from io import BytesIO
 import os
-import bs4, lxml
+import bs4
 import httpx
 from PIL import Image, ImageFont, ImageDraw
 from PIL.PngImagePlugin import PngImageFile, PngInfo
