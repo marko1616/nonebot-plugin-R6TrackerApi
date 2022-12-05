@@ -108,7 +108,7 @@ async def get_data(bot: Bot, event: Event,ubi_name: str = ArgPlainText("ubi_name
                 url = await send_media(bot,"image",f'{os.path.join(os.path.dirname(__file__),"gen.png")}')
                 await search_r6_data.send(append_MessageSegment(adapter_type,'image',url))
             else:
-                await search_r6_data.send(append_MessageSegment(adapter_type,'image',f'file:///{os.path.join(os.path.dirname(__file__),"gen.png")}'))
+                await search_r6_data.send(append_MessageSegment(adapter_type,'image',f'{os.path.join(os.path.dirname(__file__),"gen.png")}'))
         elif message == list:
             await search_r6_data.send(message[0])
             await search_r6_data.send(message[1])
@@ -171,7 +171,7 @@ async def _(event: Event,bot: Bot):
         url = await send_media(bot,"image",f'{os.path.join(os.path.dirname(__file__),"gen.png")}')
         await search_r6_data.send(append_MessageSegment(adapter_type,'image',url))
     else:
-        await search_r6_data.send(append_MessageSegment(adapter_type,'image',f'file:///{os.path.join(os.path.dirname(__file__),"gen.png")}'))
+        await search_r6_data.send(append_MessageSegment(adapter_type,'image',f'{os.path.join(os.path.dirname(__file__),"gen.png")}'))
 
 #肝量数据统计
 manual_update = on_command("手动更新r6数据",aliases={"r6u"},permission=SUPERUSER)
