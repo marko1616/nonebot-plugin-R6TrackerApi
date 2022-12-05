@@ -46,6 +46,21 @@ file = open(ubi_name_cache_file, "r", encoding="utf-8")
 ubi_name_cache = json.loads(file.read())
 file.close()
 
+def drawRoundRec(img, color, x, y, w, h, r):
+    drawObject = ImageDraw.Draw(img)
+    
+    '''Rounds'''    
+    drawObject.ellipse((x,y,x+r,y+r),fill=color)    
+    drawObject.ellipse((x+w-r,y,x+w,y+r),fill=color)    
+    drawObject.ellipse((x,y+h-r,x+r,y+h),fill=color)    
+    drawObject.ellipse((x+w-r,y+h-r,x+w,y+h),fill=color)
+    
+    '''rec.s'''    
+    drawObject.rectangle((x+r/2,y, x+w-(r/2), y+h),fill=color)    
+    drawObject.rectangle((x,y+r/2, x+w, y+h-(r/2)),fill=color)
+
+    return img
+
 search_r6_data = on_command("r6战绩查询",aliases={"r6d"},priority=5)
 @search_r6_data.handle()
 async def search_r6_data_handle(matcher: Matcher, bot: Bot, event: Event, args : Message = CommandArg()):
@@ -173,6 +188,88 @@ async def _(event: Event,bot: Bot):
     else:
         await search_r6_data.send(append_MessageSegment(adapter_type,'image',f'{os.path.join(os.path.dirname(__file__),"gen.png")}'))
 
+workhard_rate_search = on_command("r6肝度查询",priority=5)
+@workhard_rate_search.handle()
+async def workhard_rate_search_handle(matcher: Matcher, bot: Bot, event: Event, args : Message = CommandArg()):
+    global at_flag
+    global use_cache_flag
+    #初始化每一次的事件处理用标识变量
+    at_flag = False#是否强制使用缓存@或表示自己
+    use_cache_flag = False#缓存存在标识
+
+    plain_text = args.extract_plain_text()
+    if "[CQ:at,qq=" in get_msg(event):
+        matcher.set_arg("ubi_name", Message(get_msg(event).split("=")[1].split("]")[0]))#获取@里面的QQ号当参数
+        at_flag = True
+
+    if plain_text:
+        matcher.set_arg("ubi_name", args)
+
+@workhard_rate_search.got("ubi_name", prompt='名称は?')
+async def show_data(bot: Bot, event: Event,ubi_name: str = ArgPlainText("ubi_name")):
+    global at_flag
+    global use_cache_flag
+    adapter_type = is_what_adapter(event)
+    if "[CQ:at,qq=" in get_msg(event):
+        ubi_name =  get_msg(event).split("=")[1].split("]")[0]
+        at_flag = True
+    if ubi_name in self_strs:   
+        at_flag = True
+    #校验是否是群名称
+    if is_group_msg(event):
+        #查询是否是QQ群名或者@
+        group_id = str(is_group_msg(event)[1])
+        member_list = (await get_group_member_list(bot,group_id=group_id))[1]
+        if group_id in ubi_name_cache[adapter_type]["groups"]:
+            for member in member_list:
+                if str(member['user_id']) in ubi_name_cache[adapter_type]["groups"][group_id]:
+                    if str(member['user_id']) == ubi_name or member['nickname'] == ubi_name or (ubi_name in self_strs and str(member["user_id"]) == event.get_user_id()):
+                        ubi_name = ubi_name_cache[adapter_type]["groups"][group_id][str(member['user_id'])]["ubi_name"]
+                        await search_r6_data.send(f"检测到是群名/自我查询自动使用已缓存的UBI名称{ubi_name}")
+                        use_cache_flag = True
+        else:
+            ubi_name_cache[adapter_type]["groups"][group_id] = {}
+            write_cache_to_json(ubi_name_cache)
+    
+    elif at_flag:#如果是好友且查询自己
+        friend_id = str(event.get_user_id())
+        if friend_id in ubi_name_cache[adapter_type]["friends"]:
+            ubi_name = ubi_name_cache[adapter_type]["friends"][friend_id]["ubi_name"]
+            use_cache_flag = True
+    img = Image.new('RGBA',(3390,620),(25,25,25))
+    draw = ImageDraw.Draw(img)
+    font50 = ImageFont.truetype(os.path.join(os.path.dirname(__file__),"font.ttf"),50)
+    draw.text((100,25),f"{ubi_name}的年肝度",fill=(250,250,250),font=font50)
+    draw.text((25,87),f"周日",fill=(250,250,250),font=font50)
+    draw.text((25,267),f"周三",fill=(250,250,250),font=font50)
+    draw.text((25,447),f"周六",fill=(250,250,250),font=font50)
+    draw.text((75,532.5),f"少",fill=(250,250,250),font=font50)
+    draw.text((472,532.5),f"多",fill=(250,250,250),font=font50)
+    for x_pixel in range(6):
+        drawRoundRec(img,(255-x_pixel*51,255,255-x_pixel*51),(125 + x_pixel*60),545,45,45,25)
+
+    days = 0
+    data = contribution_manager.get_ones_year_data(ubi_name)
+    start_offset = int(time.strftime("%w",time.localtime(time.mktime(time.strptime("2022","%Y")))))
+    for x_pixel in range(55):
+        for y_pixel in range(7):
+            if start_offset != 0:
+                start_offset -= 1
+                continue
+            if days >= 365:
+                break
+            fill_green = int(data[days] * 25.5)
+            if fill_green > 255:
+                fill_green = 255
+            drawRoundRec(img,(255-fill_green,255,255-fill_green),(125 + x_pixel*60),(100 + y_pixel*60),45,45,25)
+            days += 1
+    img.save(os.path.join(os.path.dirname(__file__),"gen.png"))
+    if adapter_type == "kook":
+        url = await send_media(bot,"image",f'{os.path.join(os.path.dirname(__file__),"gen.png")}')
+        await search_r6_data.send(append_MessageSegment(adapter_type,'image',url))
+    else:
+        await search_r6_data.send(append_MessageSegment(adapter_type,'image',f'{os.path.join(os.path.dirname(__file__),"gen.png")}'))
+
 #肝量数据统计
 manual_update = on_command("手动更新r6数据",aliases={"r6u"},permission=SUPERUSER)
 @manual_update.handle()
@@ -202,4 +299,4 @@ async def contribute():
 @scheduler.scheduled_job("cron", day="*", hour="23", minute="50")#减少过天误差
 async def contribute():
     logger.debug(f"[R6TrackerApi] | 已统计今日r6数据")
-    contribution_manager.write_today_data()
+    contribution_manager.write_today_data() 
